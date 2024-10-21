@@ -71,35 +71,31 @@ the using five different methods:
   $$\text{Arithmetic Mean}(x) = \frac{1}{n} \sum_{i=1}^{n} x_i$$
 
 - **Median:** The middle value, which is robust to outliers.  
-  $$
-  \text{Median}(x) = 
-  \begin{cases}
-  x_{\frac{n+1}{2}} & \text{if } n \text{ is odd} \\
-  \frac{x_{\frac{n}{2}} + x_{\frac{n}{2} + 1}}{2} & \text{if } n \text{ is even}
-  \end{cases}
-  $$
+
+``` math
+\text{Median}(x) = 
+\begin{cases}
+x_{\frac{n+1}{2}} & \text{if } n \text{ is odd} \\
+\frac{x_{\frac{n}{2}} + x_{\frac{n}{2} + 1}}{2} & \text{if } n \text{ is even}
+\end{cases}
+```
 
 - **Geometric Mean:** A multiplicative average, reducing the influence
   of extreme forecasts.  
   $$
   \text{Geometric Mean}(x) = \exp\left(\frac{1}{n} \sum_{i=1}^{n} \log(x_i)\right)
   $$
-
   - In the case where any $x_i = 0$, we add a small value $\epsilon$ to
     avoid taking the logarithm of zero.
-
 - **Trimmed Mean:** The arithmetic mean after removing the top and
   bottom 10% of forecasts.  
   $$
   \text{Trimmed Mean}(x) = \frac{1}{n - 2k} \sum_{i=k+1}^{n-k} x_{(i)}
   $$
-
   - where $k = \left\lfloor 0.1n \right\rfloor$ is the number of values
     removed from both the top and bottom of the sorted data.
-
 - **Geometric Mean of Odds:** Converts probabilities to odds before
   calculating the geometric mean.  
-
   1.  Convert probabilities $p_i$ to odds: $$
       \text{Odds}(p_i) = \frac{p_i}{1 - p_i}
       $$
