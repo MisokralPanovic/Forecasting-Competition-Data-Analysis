@@ -112,7 +112,7 @@ qa_dt_filtered <- qa_dt[complete.cases(qa_dt[, .(
   `discover answer id`, 
   `answer resolved probability`)])]
 ```
-<!-- Add comments to this chunk!!!! -->
+
 ```{r select_most_recent, include=FALSE}
 # Data cleaning steps
 # filter only most recent predictions per prediction on a day
@@ -185,7 +185,7 @@ aggregated_dt <- daily_dt_most_recent[, .(
   Trim_Mean = mean(forecast, trim = 10),
   Geo_Mean_Odds = geo_mean_odds(forecast)
 ), by = .(Day, `discover question id`, `discover answer id`)][order(Day, `discover question id`, `discover answer id`)] # order the aggregate
-aggregated_dt |> paged_table()
+aggregated_dt |> head(20) |> paged_table()
 ```
 
 # Evaluation of Aggregation Methods{#evaluation_aggregation}
@@ -244,7 +244,7 @@ barrier_dt[, Best_Method := colnames(.SD)[apply(.SD, 1, which.min)], # write the
   .SDcols = c("Mean", "Median", "Geo_Mean", "Trim_Mean", "Geo_Mean_Odds")] # write the order of performance of the methods in Ranked_Methods column
 ```
 ```{r aggreg_table, echo=FALSE}
-barrier_dt |> paged_table()
+barrier_dt |> head(20) |> paged_table()
 ```
 \
 The  following table shows the ordered summary of the method performance, along with the percentage of question-day pairs in which the method outperformed the rest:
@@ -314,7 +314,7 @@ aggregated_day1_dt <- day1_dt[, .(
 Following table shows the aggregated data, using the 6 aggregation method (including the improved method), on day 1, per question and the possible answers:
 ```{r day1_aggregate_table, echo=FALSE}
 # append question metadata (`answer resolved probability` column)
-aggregated_day1_dt  |> paged_table()
+aggregated_day1_dt  |> head(20) |> paged_table()
 ```
 
 ```{r day1_aggregate_table_join, include=FALSE}
@@ -323,7 +323,7 @@ aggregated_day1_metadata_dt <- aggregated_day1_dt[qa_dt, on = .(`discover answer
 ```
 \
 Following table shows the **Brier scores** for each question-day pair per aggregation method used. The final two columns, **`Best_Method`** and **`Ranked_Methods`**, show the best performing method (i.e. method with the lowest **Brier score**) and the order of the method performance, respectively:
-```{r day1_barrier_table, echo=FALSE}
+```{r day1_barrier_table, include=FALSE}
 # calculate the barrier scores per question
 barrier_day1_dt <- aggregated_day1_metadata_dt[, .(
   Mean = barrier_score(Mean, `answer resolved probability`),
@@ -333,7 +333,7 @@ barrier_day1_dt <- aggregated_day1_metadata_dt[, .(
   Geo_Mean_Odds = barrier_score(Geo_Mean_Odds, `answer resolved probability`),
   Geo_Means_Odds_Extremised =  barrier_score(Geo_Means_Odds_Extremised, `answer resolved probability`)
 ), by = .(`discover question id`)]
-barrier_day1_dt |> paged_table()
+barrier_day1_dt
 ```
 ```{r day1_best_method, include=FALSE}
 # aggregate table of performance of methods
@@ -351,10 +351,15 @@ final_table_new_method <- barrier_day1_dt[, Best_Method := colnames(.SD)[apply(.
                                                           "Trim_Mean", "Geo_Mean_Odds", 
                                                           "Geo_Means_Odds_Extremised")] # write the order of performance of the methods in Ranked_Methods column
 ```
+
+```{r aggreg_table_extremised, echo=FALSE}
+barrier_dt |> head(20) |> paged_table()
+```
+
 \
 The  following table shows the ordered summary of the method performance, along with the percentage of question-day pairs in which the method outperformed the rest:
 ```{r day1_final_table, echo=FALSE}
-final_table_new_method[, .N, by = Best_Method][order(-N)][, Percentage := (N / sum(N)) * 100] |> paged_table()
+final_table_new_method[, .N, by = Best_Method][order(-N)][, Percentage := (N / sum(N)) * 100] |> head(20) |> paged_table()
 ```
 \
 The best performing aggregation method was the extremised geometric mean of odds (42.86% of PDPs), followed by the arithmetic mean (28.57% of PDPs), median (19.05% of PDPs), the geometric mean (4.76% of PDPs), and the geometric mean of odds (4.76% of PDPs). The trimmed arithmetic mean never outperformed the other methods. Evidently, the extremised geometric mean of odds outperformed the other methods and thus was an clear improvement in the prediction evaluation. The working principle behind it is a modification of geometric mean of odds, where the geometric mean of odds is raised to the power of an extremising parameter, in this case equal to 2.5. This method is a correction for forecaster under-confidence. In the present dataset it was able to outcompete the other methods, however, it is likely that utilising it on a different dataset, which would contain less forecaster under-confidence would make it non-optimal.
