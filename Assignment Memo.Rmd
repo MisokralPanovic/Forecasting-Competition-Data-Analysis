@@ -1,16 +1,8 @@
 ---
 title: "Assignment Memo"
-output: 
-  html_document:
-    keep_md: true
-    toc: true
-    toc_float: true
+output: rmarkdown::github_document
 ---
 
-<style>
-body {
-text-align: justify}
-</style>
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
@@ -184,7 +176,7 @@ aggregated_dt <- daily_dt_most_recent[, .(
   Trim_Mean = mean(forecast, trim = 10),
   Geo_Mean_Odds = geo_mean_odds(forecast)
 ), by = .(Day, `discover question id`, `discover answer id`)][order(Day, `discover question id`, `discover answer id`)] # order the aggregate
-aggregated_dt |> head(20)
+aggregated_dt |> head(20) |> kable()
 ```
 
 # Evaluation of Aggregation Methods
@@ -243,13 +235,13 @@ barrier_dt[, Best_Method := colnames(.SD)[apply(.SD, 1, which.min)], # write the
   .SDcols = c("Mean", "Median", "Geo_Mean", "Trim_Mean", "Geo_Mean_Odds")] # write the order of performance of the methods in Ranked_Methods column
 ```
 ```{r aggreg_table, echo=FALSE}
-barrier_dt |> head(20)
+barrier_dt |> head(20) |> kable()
 ```
 \
 The  following table shows the ordered summary of the method performance, along with the percentage of question-day pairs in which the method outperformed the rest:
 ```{r aggreg_final_count, echo=F}
 final_table <- barrier_dt[, .N, by = Best_Method][order(-N)][, Percentage := (N / sum(N)) * 100]
-final_table |> head(20)
+final_table |> head(20) |> kable()
 ```
 \
 The best performing aggregation method was geometric mean (47.79% of prediction-day pairs (PDPs)), followed by the geometric mean of odds (31.42% of PDPs), median (10.54% of PDPs), and the arithmetic mean (10.25% of PDPs). The trimmed arithmetic mean never outperformed the other methods. This data suggest that methods that ignore information from extereme predictions (such as median, mean, and trimmed mean) fail to capture the true information from aggregate prediction. The geometric mean and geometric mean of odds appear to compete for the best prediction method, likely based on the nuances of the structure of the question and possible answers. Therefore this data suggest that the nature of question would dictate which aggregate method to use to most properly assess the aggregate performance of the predictors.
@@ -313,7 +305,7 @@ aggregated_day1_dt <- day1_dt[, .(
 Following table shows the aggregated data, using the 6 aggregation method (including the improved method), on day 1, per question and the possible answers:
 ```{r day1_aggregate_table, echo=FALSE}
 # append question metadata (`answer resolved probability` column)
-aggregated_day1_dt  |> head(20)
+aggregated_day1_dt  |> head(20) |> kable()
 ```
 
 ```{r day1_aggregate_table_join, include=FALSE}
@@ -352,13 +344,13 @@ final_table_new_method <- barrier_day1_dt[, Best_Method := colnames(.SD)[apply(.
 ```
 
 ```{r aggreg_table_extremised, echo=FALSE}
-barrier_dt |> head(20)
+barrier_dt |> head(20) |> kable()
 ```
 
 \
 The  following table shows the ordered summary of the method performance, along with the percentage of question-day pairs in which the method outperformed the rest:
 ```{r day1_final_table, echo=FALSE}
-final_table_new_method[, .N, by = Best_Method][order(-N)][, Percentage := (N / sum(N)) * 100] |> head(20)
+final_table_new_method[, .N, by = Best_Method][order(-N)][, Percentage := (N / sum(N)) * 100] |> head(20)|> kable()
 ```
 \
 The best performing aggregation method was the extremised geometric mean of odds (42.86% of PDPs), followed by the arithmetic mean (28.57% of PDPs), median (19.05% of PDPs), the geometric mean (4.76% of PDPs), and the geometric mean of odds (4.76% of PDPs). The trimmed arithmetic mean never outperformed the other methods. Evidently, the extremised geometric mean of odds outperformed the other methods and thus was an clear improvement in the prediction evaluation. The working principle behind it is a modification of geometric mean of odds, where the geometric mean of odds is raised to the power of an extremising parameter, in this case equal to 2.5. This method is a correction for forecaster under-confidence. In the present dataset it was able to outcompete the other methods, however, it is likely that utilising it on a different dataset, which would contain less forecaster under-confidence would make it non-optimal.
