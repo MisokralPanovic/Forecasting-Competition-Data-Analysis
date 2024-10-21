@@ -1,0 +1,362 @@
+---
+title: "Assignment Memo"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+<style>
+body {
+text-align: justify}
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(data.table)
+library(kableExtra)
+library(rmarkdown)
+```
+
+```{r data_inport, include=FALSE}
+daily_dt <- fread("data/rct-a-daily-forecasts.csv")
+qa_dt <- fread("data/rct-a-questions-answers.csv")
+```
+
+# Introduction {#introduction}
+
+This report investigates the performance of different aggregation methods for forecasting competition assessment, using the RCT-A dataset from the HFC competition. I evaluated the five aggregation methods and proposed an improvement based on the best-performing method.\
+
+The dataset was analysed using the **`data.table`** R package, which allows fast and memory efficient handling of data.
+
+# Data Structure {#data_structure}
+
+The first-year competition data comes in three main datasets:
+
+- **`rct-a-questions-answers.csv`** dataset contains metadata on the questions, such as dates, taggs, and descriptions. Variables that are important to this assignment are: discover IDs for the questions and answers (for joining of datasets), and the resolved probabilities for the answers (i.e. encoding for the true outcome).
+
+- **`rct-a-daily-forecasts.csv`** dataset contains daily forecast for each performer forecasting method, along with indexes that allow joining this dataset with the other crucial datasets. Variables that are important to this assignment are: date, discover IDs for the questions and answers, external prediction set ID (i.e. the ID that is common to to a predictor that is assigning probabilities to a set of possible answers), and the forecast value itself.
+
+- **`rct-a-prediction-sets.csv`** contains information on prediction sets, along with basic question and answer metadata, forecasted and final probability values, along with indexes that allow joining this dataset with the other datasets. This dataset seems to be redundant, as the important information can be found in the first two datasets.
+
+# Data Cleaning and Preprocessing {#data_cleaning_preprocessing}
+
+```{r helper_functions, include=F}
+# create helper functions
+geo_mean <- function(x, small_value = 1e-10) {
+  x_non_zero <- fifelse(x == 0, small_value, x) # handling 0 values by adding minuscule value (if geometric mean has 0 in the vector the result would be  0)
+  return(exp(mean(log(x_non_zero))))
+}
+
+geo_mean_odds <- function(x, small_value = 1e-10) {
+  x_deextrimised <- fifelse(x == 0, small_value, fifelse(x == 1, 1 - small_value, x)) # handling the presence of 0 and 1 values (would impede the transformation to odds)
+  odds <- x_deextrimised/(1-x_deextrimised)
+  geo_mean_odds_final <- geo_mean(odds)
+  return(geo_mean_odds_final / (1 + geo_mean_odds_final)) # converts back into probabilities
+}
+```
+
+To reduce the size of the datasets, only the relevant columns of **`rct-a-questions-answers.csv`** and **`rct-a-daily-forecasts.csv`** were selected. These were:
+
+From **`rct-a-daily-forecasts.csv`**:
+
+- **`date`**
+- **`discover question id`**
+- **`discover answer id`**
+- **`forecast`**
+- **`created at`**
+- **`external prediction set id`**
+
+From **`rct-a-questions-answers.csv`**:
+
+- **`discover question id`**
+- **`discover answer id`**
+- **`answer resolved probability`**
+
+The variables of interest were assessed for the presence of missing values, and these were subsequently removed. Lastly, only the most recent predictions per predictor per day were included in the analysis (although it seems that **`rct-a-daily-forecasts.csv`** dataset already contained only single predictions per predictor per day).
+
+```{r selection_of_columns_daily, include=F}
+# select only columns that will be used in analysis
+daily_dt <- daily_dt[, .(date, 
+                         `discover question id`, 
+                         `discover answer id`,
+                         forecast, 
+                         `created at`, 
+                         `external prediction set id`)]
+```
+```{r selection_of_columns_qa, include=FALSE}
+# select only columns that will be used in analysis
+qa_dt <- qa_dt[, .(`discover question id`, 
+                   `discover answer id`,
+                   `answer resolved probability`)]
+```
+
+```{r datetime_convert, include=FALSE}
+# convert datetime to date, to make final summary table nicer
+daily_dt[, Day := as.IDate(date)]
+```
+
+```{r remove_na, include=FALSE}
+# drop NA values in important columns (that will be used in the subsequent analysis or preprocessing)
+daily_dt_filtered <- daily_dt[complete.cases(daily_dt[, .(
+  date, 
+  `created at`,
+  `discover question id`, 
+  `discover answer id`, 
+  `external prediction set id`, 
+  forecast)])]
+
+qa_dt_filtered <- qa_dt[complete.cases(qa_dt[, .(
+  `discover question id`, 
+  `discover answer id`, 
+  `answer resolved probability`)])]
+```
+<!-- Add comments to this chunk!!!! -->
+```{r select_most_recent, include=FALSE}
+# Data cleaning steps
+# filter only most recent predictions per prediction on a day
+daily_dt_most_recent <- daily_dt_filtered[
+  order(-`created at`), # order the data from most recent `created at` time
+  .SD[1], # select the first row
+  by = .( # group data by:
+    date, 
+    `discover question id`, 
+    `discover answer id`,
+    `external prediction set id`)]
+```
+
+# Aggregation Methods {#aggregation_methods}
+I aggregated the individual forecasts for each of the question-day pair the using five different methods:
+
+- **Arithmetic Mean:** A simple average of all forecasts.\
+\[
+\text{Arithmetic Mean}(x) = \frac{1}{n} \sum_{i=1}^{n} x_i
+\]
+- **Median:** The middle value, which is robust to outliers.\
+\[
+\text{Median}(x) = 
+\begin{cases}
+x_{\frac{n+1}{2}} & \text{if } n \text{ is odd} \\
+\frac{x_{\frac{n}{2}} + x_{\frac{n}{2} + 1}}{2} & \text{if } n \text{ is even}
+\end{cases}
+\]
+- **Geometric Mean:** A multiplicative average, reducing the influence of extreme forecasts.\
+\[
+\text{Geometric Mean}(x) = \exp\left(\frac{1}{n} \sum_{i=1}^{n} \log(x_i)\right)
+\]
+  - In the case where any \( x_i = 0 \), we add a small value \( \epsilon \) to avoid taking the logarithm of zero.
+- **Trimmed Mean:** The arithmetic mean after removing the top and bottom 10% of forecasts.\
+\[
+\text{Trimmed Mean}(x) = \frac{1}{n - 2k} \sum_{i=k+1}^{n-k} x_{(i)}
+\]
+  - where \( k = \left\lfloor 0.1n \right\rfloor \) is the number of values removed from both the top and bottom of the sorted data.
+- **Geometric Mean of Odds:** Converts probabilities to odds before calculating the geometric mean.\
+  1. Convert probabilities \( p_i \) to odds:
+\[
+\text{Odds}(p_i) = \frac{p_i}{1 - p_i}
+\]
+  2. Compute the geometric mean of the odds:
+\[
+\text{Geometric Mean of Odds}(p) = \exp\left(\frac{1}{n} \sum_{i=1}^{n} \log\left(\text{Odds}(p_i)\right)\right)
+\]
+  3. Convert the result back to probabilities:
+\[
+p = \frac{\text{Geometric Mean of Odds}}{1 + \text{Geometric Mean of Odds}}
+\]
+
+```{r aggregate_code, include=FALSE}
+# create the aggregate forecast dataset for each question-date pair using the 5 different methods
+daily_dt_most_recent[, .(
+  Mean = mean(forecast),
+  Median = median(forecast),
+  Geo_Mean = geo_mean(forecast),
+  Trim_Mean = mean(forecast, trim = 10),
+  Geo_Mean_Odds = geo_mean_odds(forecast)
+), by = .(Day, `discover question id`, `discover answer id`)]# order the aggregate
+```
+Following table shows the aggregated data, using the 5 aggregation method, per day, question, and the possible answers:
+```{r aggegate_table, echo=FALSE}
+# create the aggregate forecast dataset for each question-date pair using the 5 different methods
+aggregated_dt <- daily_dt_most_recent[, .(
+  Mean = mean(forecast),
+  Median = median(forecast),
+  Geo_Mean = geo_mean(forecast),
+  Trim_Mean = mean(forecast, trim = 10),
+  Geo_Mean_Odds = geo_mean_odds(forecast)
+), by = .(Day, `discover question id`, `discover answer id`)][order(Day, `discover question id`, `discover answer id`)] # order the aggregate
+aggregated_dt |> paged_table()
+```
+
+# Evaluation of Aggregation Methods{#evaluation_aggregation}
+To evaluate the accuracy of each aggregation method, I computed the Brier score, which measures the mean squared error between the aggregated forecast and the actual outcome.
+
+
+The **Brier score** is a measure of how close the predicted probabilities are to the actual outcomes. It is defined as the mean squared error between the predicted probabilities \( \hat{p}_i \) and the known outcomes \( y_i \), given by the formula:
+
+\[
+\text{Brier Score} = \frac{1}{n} \sum_{i=1}^{n} \sum_{j=1}^{r} \left( y_i - \hat{p}_i \right)^2
+\]
+
+where:
+
+- \( y_i \) is the actual outcome (0 or 1)
+- \( \hat{p}_i \) is the predicted probability for the event
+- \( r \) is the number of possible forecast outcomes
+- \( n \) is the total number of predictions
+
+**Brier score** ranges from 0 to 1, where low values indicate better predictive capabilities.
+```{r barrier_function, include=FALSE}
+# define helper function
+barrier_score <- function(calculated, known){
+  return(mean(sum((known - calculated)^2)))
+}
+```
+
+```{r append_metadata,include=FALSE}
+# append question metadata (`answer resolved probability` column)
+aggregated_metadata_dt <- aggregated_dt[qa_dt, on = .(`discover answer id`), nomatch = 0]
+```
+
+# Results {#results}
+Following table shows the **Brier scores** for each question-day pair per aggregation method used. The final two columns, **`Best_Method`** and **`Ranked_Methods`**, show the best performing method (i.e. method with the lowest **Brier score**) and the order of the method performance, respectively:
+```{r aggerg_code, include=FALSE}
+# calculate the barrier scores per day per question
+barrier_dt <- aggregated_metadata_dt[, .(
+  Mean = barrier_score(Mean, `answer resolved probability`),
+  Median = barrier_score(Median, `answer resolved probability`),
+  Geo_Mean = barrier_score(Geo_Mean, `answer resolved probability`),
+  Trim_Mean = barrier_score(Trim_Mean, `answer resolved probability`),
+  Geo_Mean_Odds = barrier_score(Geo_Mean_Odds, `answer resolved probability`)
+), by = .(Day, `discover question id`)]
+```
+```{r aggerg_best_method, include=FALSE}
+# aggregate table of performance of methods
+barrier_dt[, Best_Method := colnames(.SD)[apply(.SD, 1, which.min)], # write the best performing method to Best_Method column
+           .SDcols = c("Mean", 
+                       "Median", 
+                       "Geo_Mean", 
+                       "Trim_Mean", 
+                       "Geo_Mean_Odds")][, Ranked_Methods := apply(.SD, 1, function(x) {
+  method_names <- colnames(.SD)
+  ranked_methods <- method_names[order(x)]
+  paste(ranked_methods, collapse = " > ")}), 
+  .SDcols = c("Mean", "Median", "Geo_Mean", "Trim_Mean", "Geo_Mean_Odds")] # write the order of performance of the methods in Ranked_Methods column
+```
+```{r aggreg_table, echo=FALSE}
+barrier_dt |> paged_table()
+```
+\
+The  following table shows the ordered summary of the method performance, along with the percentage of question-day pairs in which the method outperformed the rest:
+```{r aggreg_final_count, echo=F}
+final_table <- barrier_dt[, .N, by = Best_Method][order(-N)][, Percentage := (N / sum(N)) * 100]
+final_table |> paged_table()
+```
+\
+The best performing aggregation method was geometric mean (47.79% of prediction-day pairs (PDPs)), followed by the geometric mean of odds (31.42% of PDPs), median (10.54% of PDPs), and the arithmetic mean (10.25% of PDPs). The trimmed arithmetic mean never outperformed the other methods. This data suggest that methods that ignore information from extereme predictions (such as median, mean, and trimmed mean) fail to capture the true information from aggregate prediction. The geometric mean and geometric mean of odds appear to compete for the best prediction method, likely based on the nuances of the structure of the question and possible answers. Therefore this data suggest that the nature of question would dictate which aggregate method to use to most properly assess the aggregate performance of the predictors.
+
+# Improvement on Aggregation Methods {#improvement_aggregation}
+I propose an improvement to the geometric mean of odds by extremising the odds to penalise under-confidence in forecasters.
+
+The **extremised geometric mean of odds** is calculated in the following steps:
+
+1. Convert probabilities \( p_i \) to odds:
+
+\[
+\text{Odds}(p_i) = \frac{p_i}{1 - p_i}
+\]
+
+2. Compute the geometric mean of the odds:
+
+\[
+\text{Geometric Mean of Odds} = \exp\left(\frac{1}{n} \sum_{i=1}^{n} \log\left(\text{Odds}(p_i)\right)\right)
+\]
+
+3. Apply extremisation by raising the geometric mean of odds to the power of 2.5:
+
+\[
+\text{Extremised Odds} = \left( \text{Geometric Mean of Odds} \right)^{2.5}
+\]
+
+4. Convert the extremised odds back into probabilities:
+
+\[
+p_{\text{extremised}} = \frac{\text{Extremised Odds}}{1 + \text{Extremised Odds}}
+\]
+
+Prior to the assessment of the improved, best performing method, the **`rct-a-daily-forecasts.csv`** dataset was filtered to include only the data from the first day of the competition.
+
+```{r extremised_odds, include=FALSE}
+# New method: Extremised geometric mean of odds
+geo_mean_odds_extremised <- function(x, small_value = 1e-10) {
+  x_deextrimised <- fifelse(x == 0, small_value, fifelse(x == 1, 1 - small_value, x)) # handling 0 and 1 values
+  odds <- x_deextrimised/(1-x_deextrimised)
+  geo_mean_odds_final <- geo_mean(odds)^2.5 #penalisation of under-confident experts
+  return(geo_mean_odds_final / (1 + geo_mean_odds_final)) # converts back into probabilities
+}
+```
+
+```{r new_method_day1, include=FALSE}
+# New method: Extremised geometric mean of odds
+day1_dt <- daily_dt_most_recent[Day == min(daily_dt_most_recent$Day)]
+```
+
+```{r day1_aggreg, include=FALSE}
+aggregated_day1_dt <- day1_dt[, .(
+  Mean = mean(forecast),
+  Median = median(forecast),
+  Geo_Mean = geo_mean(forecast),
+  Trim_Mean = mean(forecast, trim = 10),
+  Geo_Mean_Odds = geo_mean_odds(forecast),
+  Geo_Means_Odds_Extremised = geo_mean_odds_extremised(forecast)
+), by = .(`discover question id`, `discover answer id`)][order(`discover question id`, `discover answer id`)]
+```
+Following table shows the aggregated data, using the 6 aggregation method (including the improved method), on day 1, per question and the possible answers:
+```{r day1_aggregate_table, echo=FALSE}
+# append question metadata (`answer resolved probability` column)
+aggregated_day1_dt  |> paged_table()
+```
+
+```{r day1_aggregate_table_join, include=FALSE}
+# append question metadata (`answer resolved probability` column)
+aggregated_day1_metadata_dt <- aggregated_day1_dt[qa_dt, on = .(`discover answer id`), nomatch = 0]
+```
+\
+Following table shows the **Brier scores** for each question-day pair per aggregation method used. The final two columns, **`Best_Method`** and **`Ranked_Methods`**, show the best performing method (i.e. method with the lowest **Brier score**) and the order of the method performance, respectively:
+```{r day1_barrier_table, echo=FALSE}
+# calculate the barrier scores per question
+barrier_day1_dt <- aggregated_day1_metadata_dt[, .(
+  Mean = barrier_score(Mean, `answer resolved probability`),
+  Median = barrier_score(Median, `answer resolved probability`),
+  Geo_Mean = barrier_score(Geo_Mean, `answer resolved probability`),
+  Trim_Mean = barrier_score(Trim_Mean, `answer resolved probability`),
+  Geo_Mean_Odds = barrier_score(Geo_Mean_Odds, `answer resolved probability`),
+  Geo_Means_Odds_Extremised =  barrier_score(Geo_Means_Odds_Extremised, `answer resolved probability`)
+), by = .(`discover question id`)]
+barrier_day1_dt |> paged_table()
+```
+```{r day1_best_method, include=FALSE}
+# aggregate table of performance of methods
+final_table_new_method <- barrier_day1_dt[, Best_Method := colnames(.SD)[apply(.SD, 1, which.min)],
+                                .SDcols = c("Mean", 
+                                            "Median", 
+                                            "Geo_Mean", 
+                                            "Trim_Mean", 
+                                            "Geo_Mean_Odds",
+                                            "Geo_Means_Odds_Extremised")][, Ranked_Methods := apply(.SD, 1, function(x) {
+                                              method_names <- colnames(.SD)
+                                              ranked_methods <- method_names[order(x)]
+                                              paste(ranked_methods, collapse = " > ")}), 
+                                              .SDcols = c("Mean", "Median", "Geo_Mean", 
+                                                          "Trim_Mean", "Geo_Mean_Odds", 
+                                                          "Geo_Means_Odds_Extremised")] # write the order of performance of the methods in Ranked_Methods column
+```
+\
+The  following table shows the ordered summary of the method performance, along with the percentage of question-day pairs in which the method outperformed the rest:
+```{r day1_final_table, echo=FALSE}
+final_table_new_method[, .N, by = Best_Method][order(-N)][, Percentage := (N / sum(N)) * 100] |> paged_table()
+```
+\
+The best performing aggregation method was the extremised geometric mean of odds (42.86% of PDPs), followed by the arithmetic mean (28.57% of PDPs), median (19.05% of PDPs), the geometric mean (4.76% of PDPs), and the geometric mean of odds (4.76% of PDPs). The trimmed arithmetic mean never outperformed the other methods. Evidently, the extremised geometric mean of odds outperformed the other methods and thus was an clear improvement in the prediction evaluation. The working principle behind it is a modification of geometric mean of odds, where the geometric mean of odds is raised to the power of an extremising parameter, in this case equal to 2.5. This method is a correction for forecaster under-confidence. In the present dataset it was able to outcompete the other methods, however, it is likely that utilising it on a different dataset, which would contain less forecaster under-confidence would make it non-optimal.
+
+# Conclusion {#conclusion}
+The extremised geometric mean of odds provided the best aggregation performance, suggesting that penalising under-confident predictions can improve forecasting accuracy. However, the effectiveness of this method may vary depending on the dataset's structure and the forecasters' behaviour.

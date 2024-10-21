@@ -1,0 +1,193 @@
+# library for memory-efficient manipulation of large datasets (finctionally similar to dyplr)
+library(data.table)
+
+##### Step 1: Loading and inspecting data --------------------------------
+
+# load the data
+daily_dt <- fread("data/rct-a-daily-forecasts.csv")
+prediction_dt <- fread("data/rct-a-prediction-sets.csv")
+qa_dt <- fread("data/rct-a-questions-answers.csv")
+
+# inspecting the data
+head(daily_dt, 25) # observe first 25 values
+daily_dt[, lapply(.SD, uniqueN)] # inspect the number of unique values
+str(daily_dt) # assess the structure of the data, including if the data was loaded in correct format
+summary(daily_dt) # inspect the range of the data, especially in the date and other important columns
+
+head(prediction_dt, 25)
+prediction_dt[, lapply(.SD, uniqueN)]
+str(prediction_dt)
+summary(prediction_dt)
+
+head(qa_dt, 25)
+qa_dt[, lapply(.SD, uniqueN)]
+str(qa_dt)
+summary(qa_dt)
+
+# printing the paragraph describing the structure of the three main datasets
+writeLines("Dataset description paragraph: \n\nThe first year competition data is located in 3 raw data files. *rct-a-questions-answers.csv* dataset contains metadata on the questions, such as dates, taggs, and descriptions. Variables that are important to this assignment are: discover IDs for the questioins and answers (for joining of datasets), and the resolved probabilities for the answers (i.e. encoding for the true outcome). \n\n*rct-a-daily-forecasts.csv* dataset contains daily forecast for each performer forecasting method, along with indexes that allow joining this dataset with the other crucial datasets. Variables that are important to this assignment are: date, discover IDs for the questioins and answers, external prediction set ID (i.e. the ID that is common to to a predictor that is assigning probabilities to a set of possible answers), and the forecast value itself \n\n*rct-a-prediction-sets.csv* contains information on prediction sets, along with basic question and answer metadata, forecasted and final probability values, along with indexes that allow joining this dataset with the other datasets. This dataset seems to be redundant, as the important information can be found in the first two datasets.")
+
+##### Step 2a: Preparing helper functions and pre-processing the data --------------------------------
+
+# create custom helper functions for geometric mean, and geometric mean of odds calculation
+geo_mean <- function(x, small_value = 1e-10) {
+  x_non_zero <- fifelse(x == 0, small_value, x) # handling 0 values by adding minuscule value (if geometric mean has 0 in the vector the result would be  0)
+  return(exp(mean(log(x_non_zero))))
+}
+
+geo_mean_odds <- function(x, small_value = 1e-10) {
+  x_deextrimised <- fifelse(x == 0, small_value, fifelse(x == 1, 1 - small_value, x)) # handling the presence of 0 and 1 values (would impede the transformation to odds)
+  odds <- x_deextrimised/(1-x_deextrimised)
+  geo_mean_odds_final <- geo_mean(odds)
+  return(geo_mean_odds_final / (1 + geo_mean_odds_final)) # converts back into probabilities
+}
+
+# select only columns that will be used in analysis to reduce the working file size
+daily_dt <- daily_dt[, .(date, 
+                         `discover question id`, 
+                         `discover answer id`,
+                         forecast, 
+                         `created at`, 
+                         `external prediction set id`)]
+qa_dt <- qa_dt[, .(`discover question id`, 
+                   `discover answer id`,
+                   `answer resolved probability`)]
+
+# convert datetime to date, to make final summary table nicer
+daily_dt[, Day := as.IDate(date)]
+
+# drop NA values in important columns (that will be used in the subsequent analysis or preprocessing)
+daily_dt_filtered <- daily_dt[complete.cases(daily_dt[, .(
+  date, 
+  `created at`,
+  `discover question id`, 
+  `discover answer id`, 
+  `external prediction set id`, 
+  forecast)])]
+
+qa_dt_filtered <- qa_dt[complete.cases(qa_dt[, .(
+  `discover question id`, 
+  `discover answer id`, 
+  `answer resolved probability`)])]
+
+# filter only most recent predictions per prediction on a day
+daily_dt_most_recent <- daily_dt_filtered[order(-`created at`),
+                                          .SD[1], # select first row
+                                          by = .(
+                                            date, 
+                                            `discover question id`, 
+                                            `discover answer id`, 
+                                            `external prediction set id`)]
+
+# printing the paragraph describing the preprocessing steps
+writeLines("Preporocessing description paragraph: \n\nTo reduce the size of the datasets, only the relevant columns of *rct-a-questions-answers.csv* (discover question and answer IDs, and answer resolved probability) and *rct-a-daily-forecasts.csv* (date, created at, discover question and answer IDs, external prediction set id, and forecast) were selected. The date column was converted from datetime format to date format to reduce visual clutter of the final table. The variables of interest were assesed for the presence of NA values, and these were subsequently removed. Lastly, only the most recent predictions per predictor per day were included in the analysis (although it seems that *rct-a-daily-forecasts.csv* dataset already contained only single predictions per predicor per day).")
+
+##### Step 2b: Creating aggregate of forecasts using the methods --------------------------------
+
+# create the aggregate forecast dataset for each question-date pair using the 5 different methods
+aggregated_dt <- daily_dt_most_recent[, .(
+  Mean = mean(forecast),
+  Median = median(forecast),
+  Geo_Mean = geo_mean(forecast),
+  Trim_Mean = mean(forecast, trim = 10),
+  Geo_Mean_Odds = geo_mean_odds(forecast)
+), by = .(Day, `discover question id`, `discover answer id`)][order(Day, `discover question id`, `discover answer id`)] # order the aggregate
+
+##### Step 3: Assessment of aggregations --------------------------------
+
+# define helper function of Barrier score
+barrier_score <- function(calculated, known){
+  return(mean(sum((known - calculated)^2)))
+}
+
+# append question metadata (`answer resolved probability` column)
+aggregated_metadata_dt <- aggregated_dt[qa_dt, on = .(`discover answer id`), nomatch = 0]
+
+# calculate the barrier scores per day per question
+barrier_dt <- aggregated_metadata_dt[, .(
+  Mean = barrier_score(Mean, `answer resolved probability`),
+  Median = barrier_score(Median, `answer resolved probability`),
+  Geo_Mean = barrier_score(Geo_Mean, `answer resolved probability`),
+  Trim_Mean = barrier_score(Trim_Mean, `answer resolved probability`),
+  Geo_Mean_Odds = barrier_score(Geo_Mean_Odds, `answer resolved probability`)
+), by = .(Day, `discover question id`)]
+
+# create two new columns. First one shows best-performing method, the second shows the order of performance of the methods
+barrier_dt[, Best_Method := colnames(.SD)[apply(.SD, 1, which.min)], # write the best performing method to Best_Method column
+           .SDcols = c("Mean", 
+                       "Median", 
+                       "Geo_Mean", 
+                       "Trim_Mean", 
+                       "Geo_Mean_Odds")][, Ranked_Methods := apply(.SD, 1, function(x) {
+  method_names <- colnames(.SD)
+  ranked_methods <- method_names[order(x)]
+  paste(ranked_methods, collapse = " > ")}), 
+  .SDcols = c("Mean", "Median", "Geo_Mean", "Trim_Mean", "Geo_Mean_Odds")] # write the order of performance of the methods in Ranked_Methods column
+
+head(barrier_dt)
+
+# count which method was best-performing
+final_table <- barrier_dt[, .N, by = Best_Method][order(-N)][, Percentage := (N / sum(N)) * 100]
+final_table
+
+# printing the paragraph describing the reasoning behind the performance of the different aggregation methods
+writeLines("Method performance paragraph: \n\nThe best performing aggregation method was geometric mean (47.79% of prediction-day pairs (PDPs)), followed by the geometric mean of odds (31.42% of PDPs), median (10.54% of PDPs), and the arithmetic mean (10.25% of PDPs). The trimmed arithmetic mean never outperformed the other methods. This data suggest that methods that ignore information from extereme predictions (such as median, mean, and trimmed mean) fail to capture the true information from aggregate prediction. The geometric mean and geometric mean of odds appear to compete for the best prediction method, likely based on the nuances of the structure of the question and possible answers. Therefore this data suggest that the nature of question would dictate which aggregate method to use to most properly assess the aggregate performance of the predictors.")
+
+##### Step 4: Improvement on aggregation methods --------------------------------
+
+# helper function for the extremised geometric mean of odds method
+geo_mean_odds_extremised <- function(x, small_value = 1e-10) {
+  x_deextrimised <- fifelse(x == 0, small_value, fifelse(x == 1, 1 - small_value, x)) # handling 0 and 1 values
+  odds <- x_deextrimised/(1-x_deextrimised)
+  geo_mean_odds_final <- geo_mean(odds)^2.5 #penalisation of under-confident experts
+  return(geo_mean_odds_final / (1 + geo_mean_odds_final)) # converts back into probabilities
+}
+
+# filter only day one from the daily_dt dataset
+day1_dt <- daily_dt_most_recent[Day == min(daily_dt_most_recent$Day)]
+
+# create the aggregate forecast dataset for each question-answer using the 5 original methods (for comparison) and the new method
+aggregated_day1_dt <- day1_dt[, .(
+  Mean = mean(forecast),
+  Median = median(forecast),
+  Geo_Mean = geo_mean(forecast),
+  Trim_Mean = mean(forecast, trim = 10),
+  Geo_Mean_Odds = geo_mean_odds(forecast),
+  Geo_Means_Odds_Extremised = geo_mean_odds_extremised(forecast)
+), by = .(`discover question id`, `discover answer id`)][order(`discover question id`, `discover answer id`)]
+
+# append question metadata (`answer resolved probability` column)
+aggregated_day1_metadata_dt <- aggregated_day1_dt[qa_dt, on = .(`discover answer id`), nomatch = 0]
+
+# calculate the barrier scores per question
+barrier_day1_dt <- aggregated_day1_metadata_dt[, .(
+  Mean = barrier_score(Mean, `answer resolved probability`),
+  Median = barrier_score(Median, `answer resolved probability`),
+  Geo_Mean = barrier_score(Geo_Mean, `answer resolved probability`),
+  Trim_Mean = barrier_score(Trim_Mean, `answer resolved probability`),
+  Geo_Mean_Odds = barrier_score(Geo_Mean_Odds, `answer resolved probability`),
+  Geo_Means_Odds_Extremised =  barrier_score(Geo_Means_Odds_Extremised, `answer resolved probability`)
+), by = .(`discover question id`)]
+
+# aggregate table of performance of methods
+barrier_day1_dt[, Best_Method := colnames(.SD)[apply(.SD, 1, which.min)], # write the best performing method to Best_Method column
+                                .SDcols = c("Mean", 
+                                            "Median", 
+                                            "Geo_Mean", 
+                                            "Trim_Mean", 
+                                            "Geo_Mean_Odds",
+                                            "Geo_Means_Odds_Extremised")][, Ranked_Methods := apply(.SD, 1, function(x) {
+                                              method_names <- colnames(.SD)
+                                              ranked_methods <- method_names[order(x)]
+                                              paste(ranked_methods, collapse = " > ")}), 
+                                              .SDcols = c("Mean", "Median", "Geo_Mean", 
+                                                          "Trim_Mean", "Geo_Mean_Odds", 
+                                                          "Geo_Means_Odds_Extremised")] # write the order of performance of the methods in Ranked_Methods column
+barrier_day1_dt
+
+# count the appearance of methods in Best_Method column and add the percentage of best barrier score
+final_table_new_method <- barrier_day1_dt[, .N, by = Best_Method][order(-N)][, Percentage := (N / sum(N)) * 100]
+final_table_new_method
+
+# printing the paragraph describing why is the new method an improvement
+writeLines("Method performance paragraph, with regards to the improved aggregation method: \n\nThe best performing aggregation method was the extremised geometric mean of odds (42.86% of PDPs), followed by the arithmetic mean (28.57% of PDPs), median (19.05% of PDPs), the geometric mean (4.76% of PDPs), and the geometric mean of odds (4.76% of PDPs). The trimmed arithmetic mean never outperformed the other methods. Evidently, the extremised geometric mean of odds outperformed the other methods and thus was an clear improvment in the prediction evlauation. The working principle behind it is a modification of geometric mean of odds, where the geometric mean of odds is raised to the power of an extremising parameter, in this case equal to 2.5. This method is a correction for forecaster under-confidence. In the present dataset it was able to outcompete the other methods, however, it is likely that utilising it on a different dataset, which would contain less forecaster under-confidence would make it non-optimal.")
