@@ -24,13 +24,12 @@ daily_dt <- fread("data/rct-a-daily-forecasts.csv")
 qa_dt <- fread("data/rct-a-questions-answers.csv")
 ```
 
-# Introduction {#introduction}
-
+# Introduction
 This report investigates the performance of different aggregation methods for forecasting competition assessment, using the RCT-A dataset from the HFC competition. I evaluated the five aggregation methods and proposed an improvement based on the best-performing method.\
 
 The dataset was analysed using the **`data.table`** R package, which allows fast and memory efficient handling of data.
 
-# Data Structure {#data_structure}
+# Data Structure
 
 The first-year competition data comes in three main datasets:
 
@@ -40,7 +39,7 @@ The first-year competition data comes in three main datasets:
 
 - **`rct-a-prediction-sets.csv`** contains information on prediction sets, along with basic question and answer metadata, forecasted and final probability values, along with indexes that allow joining this dataset with the other datasets. This dataset seems to be redundant, as the important information can be found in the first two datasets.
 
-# Data Cleaning and Preprocessing {#data_cleaning_preprocessing}
+# Data Cleaning and Preprocessing
 
 ```{r helper_functions, include=F}
 # create helper functions
@@ -126,7 +125,7 @@ daily_dt_most_recent <- daily_dt_filtered[
     `external prediction set id`)]
 ```
 
-# Aggregation Methods {#aggregation_methods}
+# Aggregation Methods
 I aggregated the individual forecasts for each of the question-day pair the using five different methods:
 
 - **Arithmetic Mean:** A simple average of all forecasts.\
@@ -185,10 +184,10 @@ aggregated_dt <- daily_dt_most_recent[, .(
   Trim_Mean = mean(forecast, trim = 10),
   Geo_Mean_Odds = geo_mean_odds(forecast)
 ), by = .(Day, `discover question id`, `discover answer id`)][order(Day, `discover question id`, `discover answer id`)] # order the aggregate
-aggregated_dt |> head(20) |> paged_table()
+aggregated_dt |> head(20)
 ```
 
-# Evaluation of Aggregation Methods{#evaluation_aggregation}
+# Evaluation of Aggregation Methods
 To evaluate the accuracy of each aggregation method, I computed the Brier score, which measures the mean squared error between the aggregated forecast and the actual outcome.
 
 
@@ -218,7 +217,7 @@ barrier_score <- function(calculated, known){
 aggregated_metadata_dt <- aggregated_dt[qa_dt, on = .(`discover answer id`), nomatch = 0]
 ```
 
-# Results {#results}
+# Results
 Following table shows the **Brier scores** for each question-day pair per aggregation method used. The final two columns, **`Best_Method`** and **`Ranked_Methods`**, show the best performing method (i.e. method with the lowest **Brier score**) and the order of the method performance, respectively:
 ```{r aggerg_code, include=FALSE}
 # calculate the barrier scores per day per question
@@ -244,18 +243,18 @@ barrier_dt[, Best_Method := colnames(.SD)[apply(.SD, 1, which.min)], # write the
   .SDcols = c("Mean", "Median", "Geo_Mean", "Trim_Mean", "Geo_Mean_Odds")] # write the order of performance of the methods in Ranked_Methods column
 ```
 ```{r aggreg_table, echo=FALSE}
-barrier_dt |> head(20) |> paged_table()
+barrier_dt |> head(20)
 ```
 \
 The  following table shows the ordered summary of the method performance, along with the percentage of question-day pairs in which the method outperformed the rest:
 ```{r aggreg_final_count, echo=F}
 final_table <- barrier_dt[, .N, by = Best_Method][order(-N)][, Percentage := (N / sum(N)) * 100]
-final_table |> paged_table()
+final_table |> head(20)
 ```
 \
 The best performing aggregation method was geometric mean (47.79% of prediction-day pairs (PDPs)), followed by the geometric mean of odds (31.42% of PDPs), median (10.54% of PDPs), and the arithmetic mean (10.25% of PDPs). The trimmed arithmetic mean never outperformed the other methods. This data suggest that methods that ignore information from extereme predictions (such as median, mean, and trimmed mean) fail to capture the true information from aggregate prediction. The geometric mean and geometric mean of odds appear to compete for the best prediction method, likely based on the nuances of the structure of the question and possible answers. Therefore this data suggest that the nature of question would dictate which aggregate method to use to most properly assess the aggregate performance of the predictors.
 
-# Improvement on Aggregation Methods {#improvement_aggregation}
+# Improvement on Aggregation Methods
 I propose an improvement to the geometric mean of odds by extremising the odds to penalise under-confidence in forecasters.
 
 The **extremised geometric mean of odds** is calculated in the following steps:
@@ -314,7 +313,7 @@ aggregated_day1_dt <- day1_dt[, .(
 Following table shows the aggregated data, using the 6 aggregation method (including the improved method), on day 1, per question and the possible answers:
 ```{r day1_aggregate_table, echo=FALSE}
 # append question metadata (`answer resolved probability` column)
-aggregated_day1_dt  |> head(20) |> paged_table()
+aggregated_day1_dt  |> head(20)
 ```
 
 ```{r day1_aggregate_table_join, include=FALSE}
@@ -353,16 +352,16 @@ final_table_new_method <- barrier_day1_dt[, Best_Method := colnames(.SD)[apply(.
 ```
 
 ```{r aggreg_table_extremised, echo=FALSE}
-barrier_dt |> head(20) |> paged_table()
+barrier_dt |> head(20)
 ```
 
 \
 The  following table shows the ordered summary of the method performance, along with the percentage of question-day pairs in which the method outperformed the rest:
 ```{r day1_final_table, echo=FALSE}
-final_table_new_method[, .N, by = Best_Method][order(-N)][, Percentage := (N / sum(N)) * 100] |> head(20) |> paged_table()
+final_table_new_method[, .N, by = Best_Method][order(-N)][, Percentage := (N / sum(N)) * 100] |> head(20)
 ```
 \
 The best performing aggregation method was the extremised geometric mean of odds (42.86% of PDPs), followed by the arithmetic mean (28.57% of PDPs), median (19.05% of PDPs), the geometric mean (4.76% of PDPs), and the geometric mean of odds (4.76% of PDPs). The trimmed arithmetic mean never outperformed the other methods. Evidently, the extremised geometric mean of odds outperformed the other methods and thus was an clear improvement in the prediction evaluation. The working principle behind it is a modification of geometric mean of odds, where the geometric mean of odds is raised to the power of an extremising parameter, in this case equal to 2.5. This method is a correction for forecaster under-confidence. In the present dataset it was able to outcompete the other methods, however, it is likely that utilising it on a different dataset, which would contain less forecaster under-confidence would make it non-optimal.
 
-# Conclusion {#conclusion}
+# Conclusion
 The extremised geometric mean of odds provided the best aggregation performance, suggesting that penalising under-confident predictions can improve forecasting accuracy. However, the effectiveness of this method may vary depending on the dataset's structure and the forecasters' behaviour.
