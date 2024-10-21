@@ -68,17 +68,9 @@ I aggregated the individual forecasts for each of the question-day pair
 the using five different methods:
 
 - **Arithmetic Mean:** A simple average of all forecasts.  
-  $$
-  \text{Arithmetic Mean}(x) = \frac{1}{n} \sum_{i=1}^{n} x_i
-  $$
+[](https://latex.codecogs.com/svg.image?\text{Arithmetic Mean}(x) = \frac{1}{n} \sum_{i=1}^{n} x_i)
 - **Median:** The middle value, which is robust to outliers.  
-  $$
-  \text{Median}(x) = 
-  \begin{cases}
-  x_{\frac{n+1}{2}} & \text{if } n \text{ is odd} \\
-  \frac{x_{\frac{n}{2}} + x_{\frac{n}{2} + 1}}{2} & \text{if } n \text{ is even}
-  \end{cases}
-  $$
+[](https://latex.codecogs.com/svg.image?\text{Median}(x)=\begin{cases}x_{\frac{n+1}{2}} & \text{if}n\text{is odd}\\\frac{x_{\frac{n}{2}}+x_{\frac{n}{2}+1}}{2}&\text{if}n\text{is even}\end{cases})
 - **Geometric Mean:** A multiplicative average, reducing the influence
   of extreme forecasts.  
   $$
