@@ -19,13 +19,13 @@ The first-year competition data comes in three main datasets:
   questions, such as dates, taggs, and descriptions. Variables that are
   important to this assignment are: discover IDs for the questions and
   answers (for joining of datasets), and the resolved probabilities for
-  the answers (i.e. encoding for the true outcome).
+  the answers (i.e. encoding for the true outcome).
 
 - **`rct-a-daily-forecasts.csv`** dataset contains daily forecast for
   each performer forecasting method, along with indexes that allow
   joining this dataset with the other crucial datasets. Variables that
   are important to this assignment are: date, discover IDs for the
-  questions and answers, external prediction set ID (i.e. the ID that is
+  questions and answers, external prediction set ID (i.e. the ID that is
   common to to a predictor that is assigning probabilities to a set of
   possible answers), and the forecast value itself.
 
@@ -68,42 +68,58 @@ I aggregated the individual forecasts for each of the question-day pair
 the using five different methods:
 
 - **Arithmetic Mean:** A simple average of all forecasts.  
-  $$
-  \text{Arithmetic Mean}(x) = \frac{1}{n} \sum_{i=1}^{n} x_i
-  $$
+
+``` math
+\text{Arithmetic Mean}(x) = \frac{1}{n} \sum_{i=1}^{n} x_i
+```
+
 - **Median:** The middle value, which is robust to outliers.  
-  $$
-  \text{Median}(x) = 
-  \begin{cases}
-  x_{\frac{n+1}{2}} & \text{if } n \text{ is odd} \\
-  \frac{x_{\frac{n}{2}} + x_{\frac{n}{2} + 1}}{2} & \text{if } n \text{ is even}
-  \end{cases}
-  $$
+
+``` math
+\text{Median}(x) = 
+\begin{cases}
+x_{\frac{n+1}{2}} & \text{if } n \text{ is odd} \\
+\frac{x_{\frac{n}{2}} + x_{\frac{n}{2} + 1}}{2} & \text{if } n \text{ is even}
+\end{cases}
+```
+
 - **Geometric Mean:** A multiplicative average, reducing the influence
   of extreme forecasts.  
-  $$
-  \text{Geometric Mean}(x) = \exp\left(\frac{1}{n} \sum_{i=1}^{n} \log(x_i)\right)
-  $$
-  - In the case where any $x_i = 0$, we add a small value $\epsilon$ to
-    avoid taking the logarithm of zero.
+
+``` math
+\text{Geometric Mean}(x) = \exp\left(\frac{1}{n} \sum_{i=1}^{n} \log(x_i)\right)
+```
+
+- In the case where any $x_i = 0$, we add a small value $\epsilon$ to
+  avoid taking the logarithm of zero.
 - **Trimmed Mean:** The arithmetic mean after removing the top and
   bottom 10% of forecasts.  
-  $$
-  \text{Trimmed Mean}(x) = \frac{1}{n - 2k} \sum_{i=k+1}^{n-k} x_{(i)}
-  $$
-  - where $k = \left\lfloor 0.1n \right\rfloor$ is the number of values
-    removed from both the top and bottom of the sorted data.
+
+``` math
+\text{Trimmed Mean}(x) = \frac{1}{n - 2k} \sum_{i=k+1}^{n-k} x_{(i)}
+```
+
+- where $k = \left\lfloor 0.1n \right\rfloor$ is the number of values
+  removed from both the top and bottom of the sorted data.
 - **Geometric Mean of Odds:** Converts probabilities to odds before
   calculating the geometric mean.  
-  1.  Convert probabilities $p_i$ to odds: $$
-      \text{Odds}(p_i) = \frac{p_i}{1 - p_i}
-      $$
-  2.  Compute the geometric mean of the odds: $$
-      \text{Geometric Mean of Odds}(p) = \exp\left(\frac{1}{n} \sum_{i=1}^{n} \log\left(\text{Odds}(p_i)\right)\right)
-      $$
-  3.  Convert the result back to probabilities: $$
-      p = \frac{\text{Geometric Mean of Odds}}{1 + \text{Geometric Mean of Odds}}
-      $$
+  1.  Convert probabilities $p_i$ to odds:
+
+``` math
+\text{Odds}(p_i) = \frac{p_i}{1 - p_i}
+```
+
+2.  Compute the geometric mean of the odds:
+
+``` math
+\text{Geometric Mean of Odds}(p) = \exp\left(\frac{1}{n} \sum_{i=1}^{n} \log\left(\text{Odds}(p_i)\right)\right)
+```
+
+3.  Convert the result back to probabilities:
+
+``` math
+p = \frac{\text{Geometric Mean of Odds}}{1 + \text{Geometric Mean of Odds}}
+```
 
 Following table shows the aggregated data, using the 5 aggregation
 method, per day, question, and the possible answers:
@@ -142,9 +158,9 @@ probabilities are to the actual outcomes. It is defined as the mean
 squared error between the predicted probabilities $\hat{p}_i$ and the
 known outcomes $y_i$, given by the formula:
 
-$$
+``` math
 \text{Brier Score} = \frac{1}{n} \sum_{i=1}^{n} \sum_{j=1}^{r} \left( y_i - \hat{p}_i \right)^2
-$$
+```
 
 where:
 
@@ -160,7 +176,7 @@ predictive capabilities.
 
 Following table shows the **Brier scores** for each question-day pair
 per aggregation method used. The final two columns, **`Best_Method`**
-and **`Ranked_Methods`**, show the best performing method (i.e. method
+and **`Ranked_Methods`**, show the best performing method (i.e. method
 with the lowest **Brier score**) and the order of the method
 performance, respectively:
 
@@ -223,28 +239,28 @@ steps:
 
 1.  Convert probabilities $p_i$ to odds:
 
-$$
+``` math
 \text{Odds}(p_i) = \frac{p_i}{1 - p_i}
-$$
+```
 
 2.  Compute the geometric mean of the odds:
 
-$$
+``` math
 \text{Geometric Mean of Odds} = \exp\left(\frac{1}{n} \sum_{i=1}^{n} \log\left(\text{Odds}(p_i)\right)\right)
-$$
+```
 
 3.  Apply extremisation by raising the geometric mean of odds to the
     power of 2.5:
 
-$$
+``` math
 \text{Extremised Odds} = \left( \text{Geometric Mean of Odds} \right)^{2.5}
-$$
+```
 
 4.  Convert the extremised odds back into probabilities:
 
-$$
+``` math
 p_{\text{extremised}} = \frac{\text{Extremised Odds}}{1 + \text{Extremised Odds}}
-$$
+```
 
 Prior to the assessment of the improved, best performing method, the
 **`rct-a-daily-forecasts.csv`** dataset was filtered to include only the
@@ -280,7 +296,7 @@ possible answers:
   
 Following table shows the **Brier scores** for each question-day pair
 per aggregation method used. The final two columns, **`Best_Method`**
-and **`Ranked_Methods`**, show the best performing method (i.e. method
+and **`Ranked_Methods`**, show the best performing method (i.e. method
 with the lowest **Brier score**) and the order of the method
 performance, respectively:
 
