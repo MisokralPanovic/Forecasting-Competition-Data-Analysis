@@ -19,13 +19,13 @@ The first-year competition data comes in three main datasets:
   questions, such as dates, taggs, and descriptions. Variables that are
   important to this assignment are: discover IDs for the questions and
   answers (for joining of datasets), and the resolved probabilities for
-  the answers (i.e. encoding for the true outcome).
+  the answers (i.e. encoding for the true outcome).
 
 - **`rct-a-daily-forecasts.csv`** dataset contains daily forecast for
   each performer forecasting method, along with indexes that allow
   joining this dataset with the other crucial datasets. Variables that
   are important to this assignment are: date, discover IDs for the
-  questions and answers, external prediction set ID (i.e. the ID that is
+  questions and answers, external prediction set ID (i.e. the ID that is
   common to to a predictor that is assigning probabilities to a set of
   possible answers), and the forecast value itself.
 
@@ -68,9 +68,8 @@ I aggregated the individual forecasts for each of the question-day pair
 the using five different methods:
 
 - **Arithmetic Mean:** A simple average of all forecasts.  
-  $$
-  \text{Arithmetic Mean}(x) = \frac{1}{n} \sum_{i=1}^{n} x_i
-  $$
+  $$\text{Arithmetic Mean}(x) = \frac{1}{n} \sum_{i=1}^{n} x_i$$
+
 - **Median:** The middle value, which is robust to outliers.  
   $$
   \text{Median}(x) = 
@@ -79,22 +78,28 @@ the using five different methods:
   \frac{x_{\frac{n}{2}} + x_{\frac{n}{2} + 1}}{2} & \text{if } n \text{ is even}
   \end{cases}
   $$
+
 - **Geometric Mean:** A multiplicative average, reducing the influence
   of extreme forecasts.  
   $$
   \text{Geometric Mean}(x) = \exp\left(\frac{1}{n} \sum_{i=1}^{n} \log(x_i)\right)
   $$
+
   - In the case where any $x_i = 0$, we add a small value $\epsilon$ to
     avoid taking the logarithm of zero.
+
 - **Trimmed Mean:** The arithmetic mean after removing the top and
   bottom 10% of forecasts.  
   $$
   \text{Trimmed Mean}(x) = \frac{1}{n - 2k} \sum_{i=k+1}^{n-k} x_{(i)}
   $$
+
   - where $k = \left\lfloor 0.1n \right\rfloor$ is the number of values
     removed from both the top and bottom of the sorted data.
+
 - **Geometric Mean of Odds:** Converts probabilities to odds before
   calculating the geometric mean.  
+
   1.  Convert probabilities $p_i$ to odds: $$
       \text{Odds}(p_i) = \frac{p_i}{1 - p_i}
       $$
@@ -160,7 +165,7 @@ predictive capabilities.
 
 Following table shows the **Brier scores** for each question-day pair
 per aggregation method used. The final two columns, **`Best_Method`**
-and **`Ranked_Methods`**, show the best performing method (i.e. method
+and **`Ranked_Methods`**, show the best performing method (i.e. method
 with the lowest **Brier score**) and the order of the method
 performance, respectively:
 
@@ -280,7 +285,7 @@ possible answers:
   
 Following table shows the **Brier scores** for each question-day pair
 per aggregation method used. The final two columns, **`Best_Method`**
-and **`Ranked_Methods`**, show the best performing method (i.e. method
+and **`Ranked_Methods`**, show the best performing method (i.e. method
 with the lowest **Brier score**) and the order of the method
 performance, respectively:
 

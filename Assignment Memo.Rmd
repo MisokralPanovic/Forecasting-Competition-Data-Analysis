@@ -3,7 +3,6 @@ title: "Assignment Memo"
 output: rmarkdown::github_document
 ---
 
-
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(data.table)
@@ -121,9 +120,8 @@ daily_dt_most_recent <- daily_dt_filtered[
 I aggregated the individual forecasts for each of the question-day pair the using five different methods:
 
 - **Arithmetic Mean:** A simple average of all forecasts.\
-\[
-\text{Arithmetic Mean}(x) = \frac{1}{n} \sum_{i=1}^{n} x_i
-\]
+$$\text{Arithmetic Mean}(x) = \frac{1}{n} \sum_{i=1}^{n} x_i$$
+
 - **Median:** The middle value, which is robust to outliers.\
 \[
 \text{Median}(x) = 
