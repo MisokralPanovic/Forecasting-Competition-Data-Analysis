@@ -1,7 +1,29 @@
-# library for memory-efficient manipulation of large datasets (finctionally similar to dyplr)
+# library for memory-efficient manipulation of large datasets (functionally similar to dyplr)
 library(data.table)
+library(googledrive)
 
 ##### Step 1: Loading and inspecting data --------------------------------
+
+# Authenticate with Google Drive
+drive_auth()
+
+# create key value pairs of dataset names and the corresponding google drive IDs
+data_dict_env <- new.env()
+data_dict_env[["data/rct-a-daily-forecasts.csv"]] <- "15DlG6rsUrIPcGB0OhLJ55QvmzwTUdUNn"
+data_dict_env[["data/rct-a-prediction-sets.csv"]] <- "15JiEmQs1IJMbUyeLcQONUyFRw45GMmms"
+data_dict_env[["data/rct-a-questions-answers.csv"]] <- "15LTcptGkzn6DcaCqvXDwaKwwwpWAtPh3"
+
+# download the dataset if they are absent
+for (key in ls(data_dict_env)) {
+  value <- data_dict_env[[key]]
+  
+  if (!file.exists(key)) {
+    drive_download(as_id(value), path = key, overwrite = FALSE)
+    message("File downloaded successfully.")
+  } else {
+    message("File already exists. Download skipped.")
+  }
+}
 
 # load the data
 daily_dt <- fread("data/rct-a-daily-forecasts.csv")
