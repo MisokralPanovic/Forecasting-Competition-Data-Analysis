@@ -16,16 +16,16 @@ allows fast and memory efficient handling of data.
 The first-year competition data comes in three main datasets:
 
 - **`rct-a-questions-answers.csv`** dataset contains metadata on the
-  questions, such as dates, taggs, and descriptions. Variables that are
+  questions, such as dates, tags, and descriptions. Variables that are
   important to this assignment are: discover IDs for the questions and
   answers (for joining of datasets), and the resolved probabilities for
-  the answers (i.e. encoding for the true outcome).
+  the answers (i.e. encoding for the true outcome).
 
 - **`rct-a-daily-forecasts.csv`** dataset contains daily forecast for
   each performer forecasting method, along with indexes that allow
   joining this dataset with the other crucial datasets. Variables that
   are important to this assignment are: date, discover IDs for the
-  questions and answers, external prediction set ID (i.e. the ID that is
+  questions and answers, external prediction set ID (i.e. the ID that is
   common to to a predictor that is assigning probabilities to a set of
   possible answers), and the forecast value itself.
 

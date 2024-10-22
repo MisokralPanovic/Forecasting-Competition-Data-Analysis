@@ -1,15 +1,42 @@
-Assignment Memo
+Forecasting Competition Data Analysis
 ================
 
 # Introduction
 
 This report investigates the performance of different aggregation
 methods for forecasting competition assessment, using the RCT-A dataset
-from the HFC competition. I evaluated the five aggregation methods and
-proposed an improvement based on the best-performing method.  
+from the HFC competition. I evaluated five aggregation methods, and
+their performance in correctly aggregating the predictions from
+different predictors, and proposed an improvement based on the
+best-performing method.  
 
 The dataset was analysed using the **`data.table`** R package, which
 allows fast and memory efficient handling of data.
+
+## Downloading Data
+
+``` r
+# Authenticate with Google Drive
+drive_auth()
+
+# create key value pairs of dataset names and the corresponding google drive IDs
+data_dict_env <- new.env()
+data_dict_env[["data/rct-a-daily-forecasts.csv"]] <- "15DlG6rsUrIPcGB0OhLJ55QvmzwTUdUNn"
+data_dict_env[["data/rct-a-prediction-sets.csv"]] <- "15JiEmQs1IJMbUyeLcQONUyFRw45GMmms"
+data_dict_env[["data/rct-a-questions-answers.csv"]] <- "15LTcptGkzn6DcaCqvXDwaKwwwpWAtPh3"
+
+# download the dataset if they are absent
+for (key in ls(data_dict_env)) {
+  value <- data_dict_env[[key]]
+  
+  if (!file.exists(key)) {
+    drive_download(as_id(value), path = key, overwrite = FALSE)
+    message("File downloaded successfully.")
+  } else {
+    message("File already exists. Download skipped.")
+  }
+}
+```
 
 # Data Structure
 
@@ -76,7 +103,7 @@ the using five different methods:
 - **Median:** The middle value, which is robust to outliers.  
 
 ``` math
-\text{Median}(x) = 
+\text{Median}(x) =
 \begin{cases}
 x_{\frac{n+1}{2}} & \text{if } n \text{ is odd} \\
 \frac{x_{\frac{n}{2}} + x_{\frac{n}{2} + 1}}{2} & \text{if } n \text{ is even}

@@ -1,5 +1,5 @@
 ---
-title: "Assignment Memo"
+title: "Forecasting Competition Data Analysis"
 output: rmarkdown::github_document
 ---
 
@@ -11,7 +11,15 @@ library(kableExtra)
 library(rmarkdown)
 ```
 
-```{r data_download, include=FALSE}
+
+# Introduction
+This report investigates the performance of different aggregation methods for forecasting competition assessment, using the RCT-A dataset from the HFC competition. I evaluated five aggregation methods, and their performance in correctly aggregating the predictions from different predictors, and proposed an improvement based on the best-performing method.\
+
+The dataset was analysed using the **`data.table`** R package, which allows fast and memory efficient handling of data.
+
+## Downloading Data
+
+```{r data_download, message=FALSE}
 # Authenticate with Google Drive
 drive_auth()
 
@@ -40,10 +48,6 @@ daily_dt <- fread("data/rct-a-daily-forecasts.csv")
 qa_dt <- fread("data/rct-a-questions-answers.csv")
 ```
 
-# Introduction
-This report investigates the performance of different aggregation methods for forecasting competition assessment, using the RCT-A dataset from the HFC competition. I evaluated the five aggregation methods and proposed an improvement based on the best-performing method.\
-
-The dataset was analysed using the **`data.table`** R package, which allows fast and memory efficient handling of data.
 
 # Data Structure
 
@@ -152,7 +156,7 @@ I aggregated the individual forecasts for each of the question-day pair the usin
 - **Median:** The middle value, which is robust to outliers.\
 
 ```{math}
-\text{Median}(x) = 
+\text{Median}(x) =
 \begin{cases}
 x_{\frac{n+1}{2}} & \text{if } n \text{ is odd} \\
 \frac{x_{\frac{n}{2}} + x_{\frac{n}{2} + 1}}{2} & \text{if } n \text{ is even}
@@ -163,11 +167,13 @@ x_{\frac{n+1}{2}} & \text{if } n \text{ is odd} \\
 ```{math}
 \text{Geometric Mean}(x) = \exp\left(\frac{1}{n} \sum_{i=1}^{n} \log(x_i)\right)
 ```
+
   - In the case where any \( x_i = 0 \), we add a small value \( \epsilon \) to avoid taking the logarithm of zero.
 - **Trimmed Mean:** The arithmetic mean after removing the top and bottom 10% of forecasts.\
 ```{math}
 \text{Trimmed Mean}(x) = \frac{1}{n - 2k} \sum_{i=k+1}^{n-k} x_{(i)}
 ```
+
   - where \( k = \left\lfloor 0.1n \right\rfloor \) is the number of values removed from both the top and bottom of the sorted data.
 - **Geometric Mean of Odds:** Converts probabilities to odds before calculating the geometric mean.\
   1. Convert probabilities \( p_i \) to odds:
@@ -193,7 +199,7 @@ daily_dt_most_recent[, .(
   Geo_Mean = geo_mean(forecast),
   Trim_Mean = mean(forecast, trim = 10),
   Geo_Mean_Odds = geo_mean_odds(forecast)
-), by = .(Day, `discover question id`, `discover answer id`)]# order the aggregate
+), by = .(Day, `discover question id`, `discover answer id`)] # order the aggregate
 ```
 Following table shows the aggregated data, using the 5 aggregation method, per day, question, and the possible answers:
 ```{r aggegate_table, echo=FALSE}
