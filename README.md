@@ -69,9 +69,7 @@ the using five different methods:
 
 - **Arithmetic Mean:** A simple average of all forecasts.  
 
-``` math
-\text{Arithmetic Mean}(x) = \frac{1}{n} \sum_{i=1}^{n} x_i
-```
+$$\text{Arithmetic Mean}(x) = \frac{1}{n} \sum_{i=1}^{n} x_i$$
 
 - **Median:** The middle value, which is robust to outliers.  
 
