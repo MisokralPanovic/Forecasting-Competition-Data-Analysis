@@ -1,31 +1,58 @@
-Assignment Memo
+Forecasting Competition Data Analysis
 ================
 
 # Introduction
 
 This report investigates the performance of different aggregation
 methods for forecasting competition assessment, using the RCT-A dataset
-from the HFC competition. I evaluated the five aggregation methods and
-proposed an improvement based on the best-performing method.  
+from the HFC competition. I evaluated five aggregation methods, and
+their performance in correctly aggregating the predictions from
+different predictors, and proposed an improvement based on the
+best-performing method.  
 
 The dataset was analysed using the **`data.table`** R package, which
 allows fast and memory efficient handling of data.
+
+## Downloading Data
+
+``` r
+# Authenticate with Google Drive
+drive_auth()
+
+# create key value pairs of dataset names and the corresponding google drive IDs
+data_dict_env <- new.env()
+data_dict_env[["data/rct-a-daily-forecasts.csv"]] <- "15DlG6rsUrIPcGB0OhLJ55QvmzwTUdUNn"
+data_dict_env[["data/rct-a-prediction-sets.csv"]] <- "15JiEmQs1IJMbUyeLcQONUyFRw45GMmms"
+data_dict_env[["data/rct-a-questions-answers.csv"]] <- "15LTcptGkzn6DcaCqvXDwaKwwwpWAtPh3"
+
+# download the dataset if they are absent
+for (key in ls(data_dict_env)) {
+  value <- data_dict_env[[key]]
+  
+  if (!file.exists(key)) {
+    drive_download(as_id(value), path = key, overwrite = FALSE)
+    message("File downloaded successfully.")
+  } else {
+    message("File already exists. Download skipped.")
+  }
+}
+```
 
 # Data Structure
 
 The first-year competition data comes in three main datasets:
 
 - **`rct-a-questions-answers.csv`** dataset contains metadata on the
-  questions, such as dates, tags, and descriptions. Variables that are
+  questions, such as dates, taggs, and descriptions. Variables that are
   important to this assignment are: discover IDs for the questions and
   answers (for joining of datasets), and the resolved probabilities for
-  the answers (i.e. encoding for the true outcome).
+  the answers (i.e. encoding for the true outcome).
 
 - **`rct-a-daily-forecasts.csv`** dataset contains daily forecast for
   each performer forecasting method, along with indexes that allow
   joining this dataset with the other crucial datasets. Variables that
   are important to this assignment are: date, discover IDs for the
-  questions and answers, external prediction set ID (i.e. the ID that is
+  questions and answers, external prediction set ID (i.e. the ID that is
   common to to a predictor that is assigning probabilities to a set of
   possible answers), and the forecast value itself.
 
@@ -69,12 +96,14 @@ the using five different methods:
 
 - **Arithmetic Mean:** A simple average of all forecasts.  
 
-$$\text{Arithmetic Mean}(x) = \frac{1}{n} \sum_{i=1}^{n} x_i$$
+``` math
+\text{Arithmetic Mean}(x) = \frac{1}{n} \sum_{i=1}^{n} x_i
+```
 
 - **Median:** The middle value, which is robust to outliers.  
 
 ``` math
-\text{Median}(x) = 
+\text{Median}(x) =
 \begin{cases}
 x_{\frac{n+1}{2}} & \text{if } n \text{ is odd} \\
 \frac{x_{\frac{n}{2}} + x_{\frac{n}{2} + 1}}{2} & \text{if } n \text{ is even}
