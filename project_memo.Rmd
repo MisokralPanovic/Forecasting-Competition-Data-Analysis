@@ -13,15 +13,16 @@ library(rmarkdown)
 
 
 # Introduction
-This report investigates the performance of different aggregation methods for forecasting competition assessment, using the RCT-A dataset from the HFC competition. I evaluated five aggregation methods, and their performance in correctly aggregating the predictions from different predictors, and proposed an improvement based on the best-performing method.\
+This report investigates the performance of different aggregation methods for forecasting competition assessment, using the RCT-A dataset from the [HFC competition](https://dataverse.harvard.edu/dataverse/hfc). I evaluated five aggregation methods, and their performance in correctly aggregating the predictions from different predictors, and proposed an improvement based on the best-performing method.\
 
 The dataset was analysed using the **`data.table`** R package, which allows fast and memory efficient handling of data.
 
-## Downloading Data
+## Downloading the Data
+Due to the size of the datasets to be analysed, they can not be hosted on GitHub. I have hosted them on a Google Drive, and made publicly accessible. Due to this, the initial step is to download the data with the help of **`googledrive`** R package.
 
 ```{r data_download, message=FALSE}
 # Authenticate with Google Drive
-drive_auth()
+googledrive::drive_auth()
 
 # create key value pairs of dataset names and the corresponding google drive IDs
 data_dict_env <- new.env()
@@ -34,7 +35,7 @@ for (key in ls(data_dict_env)) {
   value <- data_dict_env[[key]]
   
   if (!file.exists(key)) {
-    drive_download(as_id(value), path = key, overwrite = FALSE)
+    googledrive::drive_download(as_id(value), path = key, overwrite = FALSE)
     message("File downloaded successfully.")
   } else {
     message("File already exists. Download skipped.")
@@ -43,38 +44,37 @@ for (key in ls(data_dict_env)) {
 ```
 
 
-```{r data_inport, include=FALSE}
-daily_dt <- fread("data/rct-a-daily-forecasts.csv")
-qa_dt <- fread("data/rct-a-questions-answers.csv")
+# Data Structure
+The data was read using the **`data.table`** **`fread`** (fast read) function.
+
+```{r data_import}
+daily_dt <- data.table::fread("data/rct-a-daily-forecasts.csv")
+prediction_dt <- data.table::fread("data/rct-a-prediction-sets.csv")
+qa_dt <- data.table::fread("data/rct-a-questions-answers.csv")
 ```
 
-
-# Data Structure
 
 The first-year competition data comes in three main datasets:
 
 - **`rct-a-questions-answers.csv`** dataset contains metadata on the questions, such as dates, taggs, and descriptions. Variables that are important to this assignment are: discover IDs for the questions and answers (for joining of datasets), and the resolved probabilities for the answers (i.e. encoding for the true outcome).
 
+```{r data_structure_daily}
+str(daily_dt) # assess the structure of the data, including if the data was loaded in correct format
+```
+
 - **`rct-a-daily-forecasts.csv`** dataset contains daily forecast for each performer forecasting method, along with indexes that allow joining this dataset with the other crucial datasets. Variables that are important to this assignment are: date, discover IDs for the questions and answers, external prediction set ID (i.e. the ID that is common to to a predictor that is assigning probabilities to a set of possible answers), and the forecast value itself.
+
+```{r data_structure_qa}
+str(qa_dt) # assess the structure of the data, including if the data was loaded in correct format
+```
 
 - **`rct-a-prediction-sets.csv`** contains information on prediction sets, along with basic question and answer metadata, forecasted and final probability values, along with indexes that allow joining this dataset with the other datasets. This dataset seems to be redundant, as the important information can be found in the first two datasets.
 
-# Data Cleaning and Preprocessing
-
-```{r helper_functions, include=F}
-# create helper functions
-geo_mean <- function(x, small_value = 1e-10) {
-  x_non_zero <- fifelse(x == 0, small_value, x) # handling 0 values by adding minuscule value (if geometric mean has 0 in the vector the result would be  0)
-  return(exp(mean(log(x_non_zero))))
-}
-
-geo_mean_odds <- function(x, small_value = 1e-10) {
-  x_deextrimised <- fifelse(x == 0, small_value, fifelse(x == 1, 1 - small_value, x)) # handling the presence of 0 and 1 values (would impede the transformation to odds)
-  odds <- x_deextrimised/(1-x_deextrimised)
-  geo_mean_odds_final <- geo_mean(odds)
-  return(geo_mean_odds_final / (1 + geo_mean_odds_final)) # converts back into probabilities
-}
+```{r data_structure_prediction}
+str(prediction_dt) # assess the structure of the data, including if the data was loaded in correct format
 ```
+
+# Data Cleaning and Preprocessing
 
 To reduce the size of the datasets, only the relevant columns of **`rct-a-questions-answers.csv`** and **`rct-a-daily-forecasts.csv`** were selected. These were:
 
@@ -87,15 +87,7 @@ From **`rct-a-daily-forecasts.csv`**:
 - **`created at`**
 - **`external prediction set id`**
 
-From **`rct-a-questions-answers.csv`**:
-
-- **`discover question id`**
-- **`discover answer id`**
-- **`answer resolved probability`**
-
-The variables of interest were assessed for the presence of missing values, and these were subsequently removed. Lastly, only the most recent predictions per predictor per day were included in the analysis (although it seems that **`rct-a-daily-forecasts.csv`** dataset already contained only single predictions per predictor per day).
-
-```{r selection_of_columns_daily, include=F}
+```{r selection_of_columns_daily}
 # select only columns that will be used in analysis
 daily_dt <- daily_dt[, .(date, 
                          `discover question id`, 
@@ -104,19 +96,30 @@ daily_dt <- daily_dt[, .(date,
                          `created at`, 
                          `external prediction set id`)]
 ```
-```{r selection_of_columns_qa, include=FALSE}
+
+The **`date`** column was converted from **`IDateTime`** format to **`IDate`** format, for enhanced data clarity.
+
+```{r datetime_convert}
+# convert datetime to date, to make final summary table nicer
+daily_dt[, Day := as.IDate(date)]
+```
+
+From **`rct-a-questions-answers.csv`**:
+
+- **`discover question id`**
+- **`discover answer id`**
+- **`answer resolved probability`**
+
+```{r selection_of_columns_qa}
 # select only columns that will be used in analysis
 qa_dt <- qa_dt[, .(`discover question id`, 
                    `discover answer id`,
                    `answer resolved probability`)]
 ```
 
-```{r datetime_convert, include=FALSE}
-# convert datetime to date, to make final summary table nicer
-daily_dt[, Day := as.IDate(date)]
-```
+The variables of interest were assessed for the presence of missing values, and these were subsequently removed. 
 
-```{r remove_na, include=FALSE}
+```{r remove_na}
 # drop NA values in important columns (that will be used in the subsequent analysis or preprocessing)
 daily_dt_filtered <- daily_dt[complete.cases(daily_dt[, .(
   date, 
@@ -132,7 +135,9 @@ qa_dt_filtered <- qa_dt[complete.cases(qa_dt[, .(
   `answer resolved probability`)])]
 ```
 
-```{r select_most_recent, include=FALSE}
+Lastly, only the most recent predictions per predictor per day were included in the analysis (although it seems that **`rct-a-daily-forecasts.csv`** dataset already contained only single predictions per predictor per day).
+
+```{r select_most_recent}
 # Data cleaning steps
 # filter only most recent predictions per prediction on a day
 daily_dt_most_recent <- daily_dt_filtered[
@@ -146,6 +151,7 @@ daily_dt_most_recent <- daily_dt_filtered[
 ```
 
 # Aggregation Methods
+
 I aggregated the individual forecasts for each of the question-day pair the using five different methods:
 
 - **Arithmetic Mean:** A simple average of all forecasts.\
@@ -191,6 +197,24 @@ x_{\frac{n+1}{2}} & \text{if } n \text{ is odd} \\
 p = \frac{\text{Geometric Mean of Odds}}{1 + \text{Geometric Mean of Odds}}
 ```
 
+To do this, I have created two helper functions for calculating the geometric mean, and geometric mean of odds.
+
+```{r helper_functions}
+# create helper functions
+geo_mean <- function(x, small_value = 1e-10) {
+  x_non_zero <- fifelse(x == 0, small_value, x) # handling 0 values by adding minuscule value (if geometric mean has 0 in the vector the result would be  0)
+  return(exp(mean(log(x_non_zero))))
+}
+
+geo_mean_odds <- function(x, small_value = 1e-10) {
+  x_deextrimised <- fifelse(x == 0, small_value, fifelse(x == 1, 1 - small_value, x)) # handling the presence of 0 and 1 values (would impede the transformation to odds)
+  odds <- x_deextrimised/(1-x_deextrimised)
+  geo_mean_odds_final <- geo_mean(odds)
+  return(geo_mean_odds_final / (1 + geo_mean_odds_final)) # converts back into probabilities
+}
+```
+
+
 ```{r aggregate_code, include=FALSE}
 # create the aggregate forecast dataset for each question-date pair using the 5 different methods
 daily_dt_most_recent[, .(
@@ -201,8 +225,9 @@ daily_dt_most_recent[, .(
   Geo_Mean_Odds = geo_mean_odds(forecast)
 ), by = .(Day, `discover question id`, `discover answer id`)] # order the aggregate
 ```
+
 Following table shows the aggregated data, using the 5 aggregation method, per day, question, and the possible answers:
-```{r aggegate_table, echo=FALSE}
+```{r aggegate_table}
 # create the aggregate forecast dataset for each question-date pair using the 5 different methods
 aggregated_dt <- daily_dt_most_recent[, .(
   Mean = mean(forecast),
@@ -211,7 +236,7 @@ aggregated_dt <- daily_dt_most_recent[, .(
   Trim_Mean = mean(forecast, trim = 10),
   Geo_Mean_Odds = geo_mean_odds(forecast)
 ), by = .(Day, `discover question id`, `discover answer id`)][order(Day, `discover question id`, `discover answer id`)] # order the aggregate
-aggregated_dt |> head(20) |> kable()
+aggregated_dt |> head(12) |> kable()
 ```
 
 # Evaluation of Aggregation Methods
@@ -232,21 +257,28 @@ where:
 - \( n \) is the total number of predictions
 
 **Brier score** ranges from 0 to 1, where low values indicate better predictive capabilities.
-```{r barrier_function, include=FALSE}
+
+# Results
+
+To calculate the aggregated barrier score, I have created a function that does so. It takes as input the predicted probability of event happening, and the actual probability (i.e. in questions with multiple answers, it encodes 0 for false answers, and 1 for the correct outcome)
+```{r barrier_function}
 # define helper function
 barrier_score <- function(calculated, known){
   return(mean(sum((known - calculated)^2)))
 }
 ```
 
-```{r append_metadata,include=FALSE}
+
+To obtain the actual probabilities, the **`qa_dt`** dataset was joined based on **`discover answer id`** colum to **`aggregated_dt`** dataset. Since the **`qa_dt`** dataset had already the non-relevant columns removed, it attached only the **`answer resolved probability`** column.
+
+```{r append_metadata}
 # append question metadata (`answer resolved probability` column)
 aggregated_metadata_dt <- aggregated_dt[qa_dt, on = .(`discover answer id`), nomatch = 0]
 ```
 
-# Results
 Following table shows the **Brier scores** for each question-day pair per aggregation method used. The final two columns, **`Best_Method`** and **`Ranked_Methods`**, show the best performing method (i.e. method with the lowest **Brier score**) and the order of the method performance, respectively:
-```{r aggerg_code, include=FALSE}
+
+```{r aggerg_code, message=FALSE}
 # calculate the barrier scores per day per question
 barrier_dt <- aggregated_metadata_dt[, .(
   Mean = barrier_score(Mean, `answer resolved probability`),
@@ -256,7 +288,9 @@ barrier_dt <- aggregated_metadata_dt[, .(
   Geo_Mean_Odds = barrier_score(Geo_Mean_Odds, `answer resolved probability`)
 ), by = .(Day, `discover question id`)]
 ```
-```{r aggerg_best_method, include=FALSE}
+
+
+```{r aggerg_best_method, message=FALSE}
 # aggregate table of performance of methods
 barrier_dt[, Best_Method := colnames(.SD)[apply(.SD, 1, which.min)], # write the best performing method to Best_Method column
            .SDcols = c("Mean", 
@@ -269,12 +303,14 @@ barrier_dt[, Best_Method := colnames(.SD)[apply(.SD, 1, which.min)], # write the
   paste(ranked_methods, collapse = " > ")}), 
   .SDcols = c("Mean", "Median", "Geo_Mean", "Trim_Mean", "Geo_Mean_Odds")] # write the order of performance of the methods in Ranked_Methods column
 ```
+
+
 ```{r aggreg_table, echo=FALSE}
-barrier_dt |> head(20) |> kable()
+barrier_dt |> head(12) |> kable()
 ```
 \
 The  following table shows the ordered summary of the method performance, along with the percentage of question-day pairs in which the method outperformed the rest:
-```{r aggreg_final_count, echo=F}
+```{r aggreg_final_count}
 final_table <- barrier_dt[, .N, by = Best_Method][order(-N)][, Percentage := (N / sum(N)) * 100]
 final_table |> head(20) |> kable()
 ```
@@ -310,9 +346,9 @@ The **extremised geometric mean of odds** is calculated in the following steps:
 p_{\text{extremised}} = \frac{\text{Extremised Odds}}{1 + \text{Extremised Odds}}
 ```
 
-Prior to the assessment of the improved, best performing method, the **`rct-a-daily-forecasts.csv`** dataset was filtered to include only the data from the first day of the competition.
 
-```{r extremised_odds, include=FALSE}
+To use this new aggregaton method, a new helper function was created.
+```{r extremised_odds}
 # New method: Extremised geometric mean of odds
 geo_mean_odds_extremised <- function(x, small_value = 1e-10) {
   x_deextrimised <- fifelse(x == 0, small_value, fifelse(x == 1, 1 - small_value, x)) # handling 0 and 1 values
@@ -322,12 +358,14 @@ geo_mean_odds_extremised <- function(x, small_value = 1e-10) {
 }
 ```
 
-```{r new_method_day1, include=FALSE}
-# New method: Extremised geometric mean of odds
+Prior to the assessment of the improved, best performing method, the **`rct-a-daily-forecasts.csv`** dataset was filtered to include only the data from the first day of the competition.
+
+```{r new_method_day1}
 day1_dt <- daily_dt_most_recent[Day == min(daily_dt_most_recent$Day)]
 ```
 
-```{r day1_aggreg, include=FALSE}
+Following table shows the aggregated data, using the 6 aggregation method (including the improved method), on day 1, per question and the possible answers:
+```{r day1_aggreg}
 aggregated_day1_dt <- day1_dt[, .(
   Mean = mean(forecast),
   Median = median(forecast),
@@ -337,19 +375,21 @@ aggregated_day1_dt <- day1_dt[, .(
   Geo_Means_Odds_Extremised = geo_mean_odds_extremised(forecast)
 ), by = .(`discover question id`, `discover answer id`)][order(`discover question id`, `discover answer id`)]
 ```
-Following table shows the aggregated data, using the 6 aggregation method (including the improved method), on day 1, per question and the possible answers:
+
 ```{r day1_aggregate_table, echo=FALSE}
 # append question metadata (`answer resolved probability` column)
-aggregated_day1_dt  |> head(20) |> kable()
+aggregated_day1_dt  |> head(12) |> kable()
 ```
 
-```{r day1_aggregate_table_join, include=FALSE}
+\
+Following table shows the **Brier scores** for each question-day pair per aggregation method used. The final two columns, **`Best_Method`** and **`Ranked_Methods`**, show the best performing method (i.e. method with the lowest **Brier score**) and the order of the method performance, respectively:
+
+
+```{r day1_aggregate_table_join, results=FALSE}
 # append question metadata (`answer resolved probability` column)
 aggregated_day1_metadata_dt <- aggregated_day1_dt[qa_dt, on = .(`discover answer id`), nomatch = 0]
 ```
-\
-Following table shows the **Brier scores** for each question-day pair per aggregation method used. The final two columns, **`Best_Method`** and **`Ranked_Methods`**, show the best performing method (i.e. method with the lowest **Brier score**) and the order of the method performance, respectively:
-```{r day1_barrier_table, include=FALSE}
+```{r day1_barrier_table, results=FALSE}
 # calculate the barrier scores per question
 barrier_day1_dt <- aggregated_day1_metadata_dt[, .(
   Mean = barrier_score(Mean, `answer resolved probability`),
@@ -361,7 +401,7 @@ barrier_day1_dt <- aggregated_day1_metadata_dt[, .(
 ), by = .(`discover question id`)]
 barrier_day1_dt
 ```
-```{r day1_best_method, include=FALSE}
+```{r day1_best_method, results=FALSE}
 # aggregate table of performance of methods
 final_table_new_method <- barrier_day1_dt[, Best_Method := colnames(.SD)[apply(.SD, 1, which.min)],
                                 .SDcols = c("Mean", 
@@ -379,13 +419,13 @@ final_table_new_method <- barrier_day1_dt[, Best_Method := colnames(.SD)[apply(.
 ```
 
 ```{r aggreg_table_extremised, echo=FALSE}
-barrier_dt |> head(20) |> kable()
+barrier_dt |> head(12) |> kable()
 ```
 
 \
 The  following table shows the ordered summary of the method performance, along with the percentage of question-day pairs in which the method outperformed the rest:
-```{r day1_final_table, echo=FALSE}
-final_table_new_method[, .N, by = Best_Method][order(-N)][, Percentage := (N / sum(N)) * 100] |> head(20)|> kable()
+```{r day1_final_table}
+final_table_new_method[, .N, by = Best_Method][order(-N)][, Percentage := (N / sum(N)) * 100] |> head(12)|> kable()
 ```
 \
 The best performing aggregation method was the extremised geometric mean of odds (42.86% of PDPs), followed by the arithmetic mean (28.57% of PDPs), median (19.05% of PDPs), the geometric mean (4.76% of PDPs), and the geometric mean of odds (4.76% of PDPs). The trimmed arithmetic mean never outperformed the other methods. Evidently, the extremised geometric mean of odds outperformed the other methods and thus was an clear improvement in the prediction evaluation. The working principle behind it is a modification of geometric mean of odds, where the geometric mean of odds is raised to the power of an extremising parameter, in this case equal to 2.5. This method is a correction for forecaster under-confidence. In the present dataset it was able to outcompete the other methods, however, it is likely that utilising it on a different dataset, which would contain less forecaster under-confidence would make it non-optimal.
